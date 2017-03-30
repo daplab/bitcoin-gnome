@@ -1,6 +1,11 @@
 package ch.daplab.bitcoin;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.util.concurrent.ListenableFuture;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.bitcoinj.core.*;
 import org.bitcoinj.params.MainNetParams;
 import org.bitcoinj.store.BlockStore;
@@ -8,6 +13,7 @@ import org.bitcoinj.store.MemoryBlockStore;
 import org.bitcoinj.utils.BriefLogFormatter;
 
 import java.net.InetAddress;
+import java.util.Properties;
 import java.util.concurrent.Future;
 
 /**
@@ -15,7 +21,11 @@ import java.util.concurrent.Future;
  */
 public class TxListener {
 
+    static String TOPIC = "bitcoin_transactions";
+
     static String hash = "000000000000000000eea02beb8e565d1e80e0012253681c39e416b86f358c5a";
+    static Producer<String, byte[]> producer = null;
+    static ObjectMapper mapper = new ObjectMapper();
 
     public static void main(String[] args) throws Exception {
         BriefLogFormatter.init();
@@ -50,7 +60,13 @@ public class TxListener {
 //        chain.d
         peerGroup.addOnTransactionBroadcastListener((peer1, t) ->
         {
-            System.out.println("TX from peer " + peer1.toString() + ": " + t);
+//            try {
+                byte[] b = t.unsafeBitcoinSerialize();
+                System.out.println("TX from peer " + peer1.toString() + ": " + b.length);
+//            } catch (JsonProcessingException e) {
+//                e.printStackTrace();
+//            }
+//            sendTx(t);
         });
 //        peerGroup.addBlocksDownloadedEventListener((peer1, block, filteredBlock, blocksLeft) -> {
 //            block.getH
@@ -77,5 +93,27 @@ public class TxListener {
         System.in.read();
 
         peerGroup.stopAsync();
+    }
+
+
+    static void sendTx(Transaction t) throws JsonProcessingException {
+
+        if (producer == null) {
+            initProducer();
+        }
+
+        byte[] payload = mapper.writeValueAsBytes(t);
+
+        producer.send(new ProducerRecord<String, byte[]>(TOPIC, payload));
+
+    }
+
+    static void initProducer() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", "10.19.7.223:9093");
+        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
+
+        Producer<String, String> producer = new KafkaProducer<String, String>(props);
     }
 }
